@@ -8,8 +8,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Secret Token (Set this in your .env file)
+// Load credentials from environment variables
 const API_SECRET_TOKEN = process.env.API_SECRET_TOKEN;
+const AUTH_USERNAME = process.env.AUTH_USERNAME;
+const AUTH_PASSWORD = process.env.AUTH_PASSWORD;
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI, {})
@@ -23,20 +25,33 @@ const DataModel = mongoose.model("data", dataSchema, "data");
 // Middleware to verify token
 const authenticateToken = (req, res, next) => {
   const token = req.query.token || req.headers["x-api-key"]; // Check token from query or header
-
   if (!token || token !== API_SECRET_TOKEN) {
     return res.status(403).json({ message: "Forbidden: Invalid Token" });
   }
   next();
 };
 
-// Test Route
-app.get("/", (req, res) => {
-  res.send("API is running!");
-});
+// Middleware for Basic Authentication (Username & Password)
+const basicAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.setHeader("WWW-Authenticate", 'Basic realm="Secure Area"');
+    return res.status(401).json({ message: "Authentication required" });
+  }
 
-// Secured API Route to Get Data and Download CSV
-app.get("/api/data", authenticateToken, async (req, res) => {
+  const base64Credentials = authHeader.split(" ")[1];
+  const credentials = Buffer.from(base64Credentials, "base64").toString("utf-8");
+  const [username, password] = credentials.split(":");
+
+  if (username !== AUTH_USERNAME || password !== AUTH_PASSWORD) {
+    return res.status(403).json({ message: "Forbidden: Invalid Credentials" });
+  }
+
+  next();
+};
+
+// Secured API Route to Get Data and Download CSV (Token + Basic Auth Required)
+app.get("/api/data", authenticateToken, basicAuth, async (req, res) => {
   try {
     const data = await DataModel.find();
 
